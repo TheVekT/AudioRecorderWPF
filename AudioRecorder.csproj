@@ -1,0 +1,55 @@
+﻿<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <OutputType>WinExe</OutputType>
+    <TargetFramework>net8.0-windows</TargetFramework>
+    <Nullable>enable</Nullable>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <UseWPF>true</UseWPF>
+    <Nullable>disable</Nullable>
+    <PublishSingleFile>true</PublishSingleFile>
+    <SelfContained>true</SelfContained>
+    <PublishTrimmed>false</PublishTrimmed> <!-- Лучше False для стабильности WPF -->
+    <RuntimeIdentifier>win-x64</RuntimeIdentifier>
+    <IncludeNativeLibrariesForSelfExtract>true</IncludeNativeLibrariesForSelfExtract>
+    <ApplicationIcon>source/icon.ico</ApplicationIcon>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <None Remove="source\arr_dw.png" />
+    <None Remove="source\arr_up.png" />
+    <None Remove="source\close.png" />
+    <None Remove="source\continue.png" />
+    <None Remove="source\drag.png" />
+    <None Remove="source\full.png" />
+    <None Remove="source\icon.ico" />
+    <None Remove="source\micro.png" />
+    <None Remove="source\micro_green.png" />
+    <None Remove="source\minimize.png" />
+    <None Remove="source\pause.png" />
+    <None Remove="source\start.png" />
+    <None Remove="source\stop.png" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <PackageReference Include="NAudio" Version="2.2.1" />
+    <PackageReference Include="WindowsAPICodePack" Version="8.0.6" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <Resource Include="source\arr_dw.png" />
+    <Resource Include="source\arr_up.png" />
+    <Resource Include="source\close.png" />
+    <Resource Include="source\continue.png" />
+    <Resource Include="source\drag.png" />
+    <Resource Include="source\full.png" />
+    <Resource Include="source\icon.ico" />
+    <Resource Include="source\micro.png" />
+    <Resource Include="source\micro_green.png" />
+    <Resource Include="source\minimize.png" />
+    <Resource Include="source\pause.png" />
+    <Resource Include="source\start.png" />
+    <Resource Include="source\stop.png" />
+  </ItemGroup>
+
+</Project>

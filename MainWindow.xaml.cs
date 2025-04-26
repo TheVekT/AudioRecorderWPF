@@ -21,18 +21,29 @@ using NAudio.Wave;
 using Microsoft.WindowsAPICodePack.Dialogs;
 using System.Globalization;
 using System.Threading;
+using Microsoft.VisualBasic;
+using System.Data;
 
-namespace WpfApp1
+namespace AudioRecorder
 {
+    public class AppSettings
+    {
+        public double SliderThresholdValue { get; set; }
+        public double SliderDaysValue { get; set; }
+        public string SelectedMicrophone { get; set; }
+        public string RecordsFolder { get; set; }
+    }
     /// <summary>
     /// Логика взаимодействия для MainWindow.xaml
     /// </summary>
     public partial class MainWindow : Window
     {
+        private const string SettingsFileName = "settings.json";
+        private AppSettings _settings;
+
         private WasapiCapture capture;
         private WaveFileWriter waveWriter;
 
-        // Состояние
         private bool isRecording = false;
         private bool isPaused = false;
         private string recordsDir = System.IO.Path.GetFullPath("records");
@@ -40,13 +51,11 @@ namespace WpfApp1
         private DispatcherTimer splitTimer = new DispatcherTimer { Interval = TimeSpan.FromMilliseconds(100) };
         private int totalSeconds = 0;
         private bool splitPending = false;
-        // Устройство для мониторинга звука
+
         private MMDevice _monitorDevice;
 
-        // Таймер для обновления иконки
         private DispatcherTimer _soundTimer;
 
-        // Последний уровень (0.0–1.0)
         private float _lastPeak;
 
         public MainWindow()
@@ -71,11 +80,16 @@ namespace WpfApp1
             // 2) Подпишемся, когда пользователь выбирает микрофон
             SelectMicro.SelectionChanged += (s, e) => RefreshMonitorDevice();
             RefreshMonitorDevice();
+            LoadSettings();
+            SampleRateSlider.ValueChanged += (_, __) => SaveSettings();
+            SaveDaysLimit.ValueChanged += (_, __) => SaveSettings();
+            SelectMicro.SelectionChanged += (_, __) => SaveSettings();
         }
 
         private void UpdateTimer(object sender, EventArgs e)
         {
-            if (this.totalSeconds == 60) {
+            if (this.totalSeconds == 60)
+            {
                 this.ScheduleNextSplit();
             }
             totalSeconds++;
@@ -179,7 +193,7 @@ namespace WpfApp1
             RecTimer.Visibility = Visibility.Visible;
             uiTimer.Start();
             this.totalSeconds = 0;
-            
+
             capture.StartRecording();
             this.isRecording = true;
             this.isPaused = false;
@@ -321,6 +335,7 @@ namespace WpfApp1
             if (dlg.ShowDialog() == CommonFileDialogResult.Ok)
             {
                 recordsDir = dlg.FileName;
+                SaveSettings();
                 this.FolderPathText.Text = $"{this.recordsDir}";
                 //SaveSettings();
             }
@@ -390,9 +405,9 @@ namespace WpfApp1
                 SetMicroIcon(false);
                 return;
             }
-            _lastPeak = _monitorDevice.AudioMeterInformation.MasterPeakValue*10000;
+            _lastPeak = _monitorDevice.AudioMeterInformation.MasterPeakValue * 10000;
             float threshold = 150 - (float)SampleRateSlider.Value;
-            this.TitleText.Text = $"Threshold: {threshold} | Last Peek: {_lastPeak}";
+            //this.TitleText.Text = $"Threshold: {threshold} | Last Peek: {_lastPeak}";
             SetMicroIcon(_lastPeak > threshold);
         }
         private void SetMicroIcon(bool active)
@@ -408,6 +423,58 @@ namespace WpfApp1
                 .EnumerateAudioEndPoints(DataFlow.Capture, DeviceState.Active)
                 .FirstOrDefault(d => d.FriendlyName == name);
         }
+        private void LoadSettings()
+        {
+            if (File.Exists(SettingsFileName))
+            {
+                try
+                {
+                    var json = File.ReadAllText(SettingsFileName);
+                    _settings = System.Text.Json.JsonSerializer.Deserialize<AppSettings>(json);
+                }
+                catch
+                {
+                    _settings = null;
+                }
+            }
+
+            if (_settings == null)
+                _settings = new AppSettings();
+
+            // 1) Позиции слайдеров
+            SampleRateSlider.Value = _settings.SliderThresholdValue;
+            SaveDaysLimit.Value = _settings.SliderDaysValue;
+
+            // 2) Папка
+            if (Directory.Exists(_settings.RecordsFolder))
+            {
+                recordsDir = _settings.RecordsFolder;
+                this.FolderPathText.Text = recordsDir;
+            }
+
+            // 3) Выбранный микрофон
+            if (!string.IsNullOrEmpty(_settings.SelectedMicrophone))
+            {
+                int idx = SelectMicro.Items
+                                 .Cast<string>()
+                                 .ToList()
+                                 .IndexOf(_settings.SelectedMicrophone);
+                if (idx >= 0) SelectMicro.SelectedIndex = idx;
+            }
+        }
+
+        private void SaveSettings()
+        {
+            _settings.SliderThresholdValue = SampleRateSlider.Value;
+            _settings.SliderDaysValue = SaveDaysLimit.Value;
+            _settings.RecordsFolder = recordsDir;
+            _settings.SelectedMicrophone = SelectMicro.SelectedItem as string;
+
+            var json = System.Text.Json.JsonSerializer
+                       .Serialize(_settings, new System.Text.Json.JsonSerializerOptions { WriteIndented = true });
+            File.WriteAllText(SettingsFileName, json);
+        }
+
     }
 }
 

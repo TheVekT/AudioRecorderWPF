@@ -3,7 +3,7 @@ Microsoft Visual Studio Solution File, Format Version 12.00
 # Visual Studio Version 17
 VisualStudioVersion = 17.13.35931.197 d17.13
 MinimumVisualStudioVersion = 10.0.40219.1
-Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "WpfApp1", "WpfApp1.csproj", "{5C8575FB-0ABF-41D3-B757-3A3C79B6D781}"
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "AudioRecorder", "AudioRecorder.csproj", "{FC2DFCB4-77D6-4156-9B08-29264FA7978B}"
 EndProject
 Global
 	GlobalSection(SolutionConfigurationPlatforms) = preSolution
@@ -11,15 +11,15 @@ Global
 		Release|Any CPU = Release|Any CPU
 	EndGlobalSection
 	GlobalSection(ProjectConfigurationPlatforms) = postSolution
-		{5C8575FB-0ABF-41D3-B757-3A3C79B6D781}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
-		{5C8575FB-0ABF-41D3-B757-3A3C79B6D781}.Debug|Any CPU.Build.0 = Debug|Any CPU
-		{5C8575FB-0ABF-41D3-B757-3A3C79B6D781}.Release|Any CPU.ActiveCfg = Release|Any CPU
-		{5C8575FB-0ABF-41D3-B757-3A3C79B6D781}.Release|Any CPU.Build.0 = Release|Any CPU
+		{FC2DFCB4-77D6-4156-9B08-29264FA7978B}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{FC2DFCB4-77D6-4156-9B08-29264FA7978B}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{FC2DFCB4-77D6-4156-9B08-29264FA7978B}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{FC2DFCB4-77D6-4156-9B08-29264FA7978B}.Release|Any CPU.Build.0 = Release|Any CPU
 	EndGlobalSection
 	GlobalSection(SolutionProperties) = preSolution
 		HideSolutionNode = FALSE
 	EndGlobalSection
 	GlobalSection(ExtensibilityGlobals) = postSolution
-		SolutionGuid = {F7C939FE-9C5F-46E1-972E-C11D4477A9BF}
+		SolutionGuid = {EC6F88C2-7904-4879-841D-EE7D60A93713}
 	EndGlobalSection
 EndGlobal
