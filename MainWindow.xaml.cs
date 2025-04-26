@@ -20,6 +20,7 @@ using NAudio.Gui;
 using NAudio.Wave;
 using Microsoft.WindowsAPICodePack.Dialogs;
 using System.Globalization;
+using System.Threading;
 
 namespace WpfApp1
 {
@@ -28,8 +29,18 @@ namespace WpfApp1
     /// </summary>
     public partial class MainWindow : Window
     {
-        private bool is_recording = false;
+        private WasapiCapture capture;
+        private WaveFileWriter waveWriter;
+
+        // Состояние
+        private bool isRecording = false;
+        private bool isPaused = false;
         private string recordsDir = System.IO.Path.GetFullPath("records");
+        private DispatcherTimer uiTimer = new DispatcherTimer { Interval = TimeSpan.FromSeconds(1) };
+        private DispatcherTimer splitTimer = new DispatcherTimer { Interval = TimeSpan.FromMilliseconds(100) };
+        private int totalSeconds = 0;
+        private bool splitPending = false;
+
         public MainWindow()
         {
             InitializeComponent();
@@ -39,7 +50,20 @@ namespace WpfApp1
                 Directory.CreateDirectory(recordsDir);
             this.FolderPathText.Text = $"{this.recordsDir}";
             this.SaveDaysLimit.Value = 7;
+            this.uiTimer.Tick += UpdateTimer;
+            this.Duration10min.IsChecked = true;
         }
+
+        private void UpdateTimer(object sender, EventArgs e)
+        {
+            if (this.totalSeconds == 60) {
+                this.ScheduleNextSplit();
+            }
+            totalSeconds++;
+            TimeSpan time = TimeSpan.FromSeconds(totalSeconds);
+            this.RecTimer.Text = $"{time.Hours:D2}:{time.Minutes:D2}:{time.Seconds:D2}";
+        }
+
         private void HeaderBorder_MouseDown(object sender, MouseButtonEventArgs e)
         {
             if (e.LeftButton == MouseButtonState.Pressed)
@@ -89,35 +113,152 @@ namespace WpfApp1
 
         private void StartRecording()
         {
+            CleanOldRecords();
 
-            this.RecStartButton.IsEnabled = false;
-            this.RecPauseButton.IsChecked = false;
-        }
+            if (isPaused == true)
+            {
+                this.ResumeRecording();
+                return;
+            }
+            this.SetUiBlocked(true);
+            this.RecTimer.Text = "00:00:00";
+            RecStartButton.IsEnabled = false;
+            RecPauseButton.IsChecked = false;
 
-        private void StopRecording()
-        {
-
-            this.RecPauseButton.IsEnabled = true;
-            this.RecStartButton.IsEnabled = true;
-            this.RecStartButton.IsChecked = false;
-            this.RecPauseButton.IsChecked = false;
-        }
-        private void PauseRecording()
-        {
-            if (this.is_recording == false) {
-                this.RecPauseButton.IsChecked = false;
+            string selectedName = this.SelectMicro.SelectedItem as string;
+            var dev = new MMDeviceEnumerator()
+                .EnumerateAudioEndPoints(DataFlow.Capture, DeviceState.Active)
+                .FirstOrDefault(d => d.FriendlyName == selectedName);
+            if (dev == null)
+            {
+                MessageBox.Show("Устройство не найдено");
                 return;
             }
 
 
+            var startTime = DateTime.Now;
+            string dateFolder = startTime.ToString("dd-MM-yyyy");
+            string fullDir = System.IO.Path.Combine(recordsDir, dateFolder);
+            Directory.CreateDirectory(fullDir);
+
+            string fileName = startTime.ToString("HH-mm-ss") + ".wav";
+            string fullPath = System.IO.Path.Combine(fullDir, fileName);
+
+            capture?.Dispose();
+            waveWriter?.Dispose();
+
+            capture = new WasapiCapture(dev);
+            capture.WaveFormat = new WaveFormat(22050, 1);
+            capture.DataAvailable += (s, e) =>
+            {
+                waveWriter.Write(e.Buffer, 0, e.BytesRecorded);
+            };
+            capture.RecordingStopped += Capture_RecordingStopped;
+
+            waveWriter = new WaveFileWriter(fullPath, capture.WaveFormat);
+
+            RecTimer.Visibility = Visibility.Visible;
+            uiTimer.Start();
+            this.totalSeconds = 0;
+            
+            capture.StartRecording();
+            this.isRecording = true;
+            this.isPaused = false;
+        }
+
+        private void PauseRecording()
+        {
+            if (isRecording == false) { this.RecPauseButton.IsChecked = false; return; }
+            isPaused = true;
+            capture.StopRecording();
+            uiTimer?.Stop();
             this.RecPauseButton.IsEnabled = false;
         }
 
         private void ResumeRecording()
         {
-
+            if (isPaused == false) return;
+            isPaused = false;
+            capture.StartRecording();
+            uiTimer.Start();
             this.RecPauseButton.IsChecked = false;
             this.RecPauseButton.IsEnabled = true;
+        }
+
+        private void StopRecording()
+        {
+            capture?.StopRecording();
+            this.RecPauseButton.IsEnabled = true;
+            this.RecStartButton.IsEnabled = true;
+            this.RecStartButton.IsChecked = false;
+            this.RecPauseButton.IsChecked = false;
+            this.SetUiBlocked(false);
+        }
+
+        // Этот метод сработает, когда capture.StopRecording() завершится
+        private void Capture_RecordingStopped(object sender, StoppedEventArgs e)
+        {
+            // Если мы просто ставили на паузу — не закрываем waveWriter/capture
+            if (isPaused)
+                return;
+
+            // Иначе — всегда сначала освобождаем "старые" ресурсы
+            waveWriter?.Dispose();
+            waveWriter = null;
+            capture?.Dispose();
+            capture = null;
+
+            uiTimer.Stop();
+            splitTimer.Stop();
+            RecTimer.Visibility = Visibility.Hidden;
+            totalSeconds = 0;
+            isRecording = false;
+
+            // Если это был сплит — сразу стартуем новую запись
+            if (splitPending)
+            {
+                splitPending = false;
+                StartRecording();
+                this.RecStartButton.IsChecked = true;
+            }
+        }
+
+        private void ScheduleNextSplit()
+        {
+            // Остановим и отпишемся от предыдущего, если он есть
+            if (splitTimer != null)
+            {
+                splitTimer.Stop();
+                splitTimer.Tick -= SplitTimer_Tick;
+            }
+
+            DateTime now = DateTime.Now;
+            DateTime next = GetNextSplitTime(now);
+            var interval = next - now;
+            if (interval.TotalMilliseconds < 0)
+                interval = TimeSpan.Zero;
+
+            splitTimer = new DispatcherTimer { Interval = interval };
+            splitTimer.Tick += SplitTimer_Tick;
+            splitTimer.Start();
+        }
+        private void SplitTimer_Tick(object sender, EventArgs e)
+        {
+            var timer = (DispatcherTimer)sender;
+            timer.Stop();
+            timer.Tick -= SplitTimer_Tick;
+
+            if (isRecording && !isPaused)
+            {
+                // Отмечаем, что после остановки надо запустить новый сплит
+                splitPending = true;
+                StopRecording();
+                // Никакого Thread.Sleep и прямого StartRecording() здесь больше нет!
+            }
+            else if (isPaused)
+            {
+                ScheduleNextSplit();
+            }
         }
 
 
@@ -207,6 +348,22 @@ namespace WpfApp1
                 }
             }
         }
+        private void SetUiBlocked(bool block)
+        {
+            bool enabled = !block;
+
+            OutputGroup.IsEnabled = enabled;
+            SettingsGroup.IsEnabled = enabled;
+            SaveDaysLimit.IsEnabled = enabled;
+            SaveLimitText.IsEnabled = enabled;
+            SaveLimitInt.IsEnabled = enabled;
+        }
+
+        private void AudioRecorder_Closed(object sender, EventArgs e)
+        {
+            this.StopRecording();
+        }
+
     }
 }
 

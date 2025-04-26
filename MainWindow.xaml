@@ -7,7 +7,7 @@
         WindowStyle="None"
         ResizeMode="NoResize" UseLayoutRounding="False" AllowsTransparency="True"
         Padding="0" Margin="0" Background="{x:Null}"
-    xmlns:theme="clr-namespace:Microsoft.Windows.Themes;assembly=PresentationFramework.Aero2" Icon="/source/icon.ico">
+    xmlns:theme="clr-namespace:Microsoft.Windows.Themes;assembly=PresentationFramework.Aero2" Icon="/source/icon.ico" Closed="AudioRecorder_Closed">
     <Window.Resources>
         <Style x:Key="FocusVisual">
             <Setter Property="Control.Template">
@@ -55,9 +55,8 @@
                                 <Setter Property="BorderBrush" TargetName="border" Value="{StaticResource Button.Pressed.Border}"/>
                             </Trigger>
                             <Trigger Property="IsEnabled" Value="false">
-                                <Setter Property="Background" TargetName="border" Value="{StaticResource Button.Disabled.Background}"/>
+                                <Setter Property="Opacity" TargetName="border" Value="0.7"/>
                                 <Setter Property="BorderBrush" TargetName="border" Value="{StaticResource Button.Disabled.Border}"/>
-                                <Setter Property="TextElement.Foreground" TargetName="contentPresenter" Value="{StaticResource Button.Disabled.Foreground}"/>
                             </Trigger>
                             <Trigger Property="IsChecked" Value="true">
                                 <Setter TargetName="border" Property="Background" Value="{StaticResource Button.Disabled.Background}" />
