@@ -40,6 +40,14 @@ namespace WpfApp1
         private DispatcherTimer splitTimer = new DispatcherTimer { Interval = TimeSpan.FromMilliseconds(100) };
         private int totalSeconds = 0;
         private bool splitPending = false;
+        // Устройство для мониторинга звука
+        private MMDevice _monitorDevice;
+
+        // Таймер для обновления иконки
+        private DispatcherTimer _soundTimer;
+
+        // Последний уровень (0.0–1.0)
+        private float _lastPeak;
 
         public MainWindow()
         {
@@ -52,6 +60,17 @@ namespace WpfApp1
             this.SaveDaysLimit.Value = 7;
             this.uiTimer.Tick += UpdateTimer;
             this.Duration10min.IsChecked = true;
+
+            _soundTimer = new DispatcherTimer
+            {
+                Interval = TimeSpan.FromMilliseconds(100)
+            };
+            _soundTimer.Tick += SoundTimer_Tick;
+            _soundTimer.Start();
+
+            // 2) Подпишемся, когда пользователь выбирает микрофон
+            SelectMicro.SelectionChanged += (s, e) => RefreshMonitorDevice();
+            RefreshMonitorDevice();
         }
 
         private void UpdateTimer(object sender, EventArgs e)
@@ -364,6 +383,31 @@ namespace WpfApp1
             this.StopRecording();
         }
 
+        private void SoundTimer_Tick(object sender, EventArgs e)
+        {
+            if (_monitorDevice == null)
+            {
+                SetMicroIcon(false);
+                return;
+            }
+            _lastPeak = _monitorDevice.AudioMeterInformation.MasterPeakValue*10000;
+            float threshold = 150 - (float)SampleRateSlider.Value;
+            this.TitleText.Text = $"Threshold: {threshold} | Last Peek: {_lastPeak}";
+            SetMicroIcon(_lastPeak > threshold);
+        }
+        private void SetMicroIcon(bool active)
+        {
+            string rel = active ? "source/micro_green.png" : "source/micro.png";
+            this.microImg.Source = new BitmapImage(new Uri(rel, UriKind.Relative));
+        }
+        private void RefreshMonitorDevice()
+        {
+            var name = SelectMicro.SelectedItem as string;
+            if (string.IsNullOrEmpty(name)) return;
+            _monitorDevice = new MMDeviceEnumerator()
+                .EnumerateAudioEndPoints(DataFlow.Capture, DeviceState.Active)
+                .FirstOrDefault(d => d.FriendlyName == name);
+        }
     }
 }
 

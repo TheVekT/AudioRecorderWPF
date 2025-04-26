@@ -793,8 +793,7 @@
                           Canvas.Left="15" Canvas.Top="90"
                           Width="230" Height="40"
                           VerticalContentAlignment="Center"
-                          Padding="10,0,0,0" SelectedIndex="0">
-                    </ComboBox>
+                          Padding="10,0,0,0" SelectedIndex="0"/>
                 </Canvas>
             </GroupBox>
 
