@@ -839,7 +839,7 @@
                         </Button.RenderTransform>
                     </Button>
                     <TextBox x:Name="FolderPathText"
-                         FontSize="13"
+                         FontSize="11.5"
                          Text="C:/filepath"
                          ToolTip="Папка збереження."
                            Canvas.Left="12" Canvas.Top="9"

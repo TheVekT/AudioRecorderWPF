@@ -23,6 +23,7 @@ using System.Globalization;
 using System.Threading;
 using Microsoft.VisualBasic;
 using System.Data;
+using NAudio.SoundFont;
 
 namespace AudioRecorder
 {
@@ -32,15 +33,17 @@ namespace AudioRecorder
         public double SliderDaysValue { get; set; }
         public string SelectedMicrophone { get; set; }
         public string RecordsFolder { get; set; }
+        public string SelectedDuration { get; set; }
     }
     /// <summary>
     /// Логика взаимодействия для MainWindow.xaml
     /// </summary>
     public partial class MainWindow : Window
     {
+
         private const string SettingsFileName = "settings.json";
         private AppSettings _settings;
-
+        private float _gain = 1.0f;
         private WasapiCapture capture;
         private WaveFileWriter waveWriter;
 
@@ -55,20 +58,24 @@ namespace AudioRecorder
         private MMDevice _monitorDevice;
 
         private DispatcherTimer _soundTimer;
-
+        
         private float _lastPeak;
-
+        private MiniWindow miniWindow;
         public MainWindow()
         {
             InitializeComponent();
+            miniWindow = new MiniWindow(this);
             this.RefreshMicrophoneList();
             this.RecTimer.Visibility = Visibility.Hidden;
+            this.SaveDaysLimit.Value = 7;
+
+            LoadSettings();
             if (!Directory.Exists(recordsDir))
                 Directory.CreateDirectory(recordsDir);
             this.FolderPathText.Text = $"{this.recordsDir}";
-            this.SaveDaysLimit.Value = 7;
+            
             this.uiTimer.Tick += UpdateTimer;
-            this.Duration10min.IsChecked = true;
+
 
             _soundTimer = new DispatcherTimer
             {
@@ -80,10 +87,11 @@ namespace AudioRecorder
             // 2) Подпишемся, когда пользователь выбирает микрофон
             SelectMicro.SelectionChanged += (s, e) => RefreshMonitorDevice();
             RefreshMonitorDevice();
-            LoadSettings();
+            
             SampleRateSlider.ValueChanged += (_, __) => SaveSettings();
             SaveDaysLimit.ValueChanged += (_, __) => SaveSettings();
             SelectMicro.SelectionChanged += (_, __) => SaveSettings();
+            this.miniWindow.ToggleTimer(Visibility.Hidden);
         }
 
         private void UpdateTimer(object sender, EventArgs e)
@@ -95,6 +103,7 @@ namespace AudioRecorder
             totalSeconds++;
             TimeSpan time = TimeSpan.FromSeconds(totalSeconds);
             this.RecTimer.Text = $"{time.Hours:D2}:{time.Minutes:D2}:{time.Seconds:D2}";
+            this.miniWindow.UpdateTimer($"{time.Hours:D2}:{time.Minutes:D2}:{time.Seconds:D2}");
         }
 
         private void HeaderBorder_MouseDown(object sender, MouseButtonEventArgs e)
@@ -106,12 +115,14 @@ namespace AudioRecorder
         }
         private void CloseButton_Click(object sender, RoutedEventArgs e)
         {
+            SaveSettings();
             Application.Current.Shutdown();
         }
 
         private void MinimizeButton_Click(object sender, RoutedEventArgs e)
         {
-            this.WindowState = WindowState.Minimized;
+            this.Visibility = Visibility.Hidden;
+            this.miniWindow.Visibility = Visibility.Visible;
         }
 
         private void SaveDaysLimit_ValueChanged(object sender, RoutedPropertyChangedEventArgs<double> e)
@@ -144,7 +155,7 @@ namespace AudioRecorder
                 SelectMicro.Items.Add("Пристрої не знайдено!");
         }
 
-        private void StartRecording()
+        public void StartRecording()
         {
             CleanOldRecords();
 
@@ -155,8 +166,14 @@ namespace AudioRecorder
             }
             this.SetUiBlocked(true);
             this.RecTimer.Text = "00:00:00";
+            this.miniWindow.UpdateTimer("00:00:00");
             RecStartButton.IsEnabled = false;
+            this.miniWindow.setRecbtnEnabled(false);
+            RecStartButton.IsChecked = true;
             RecPauseButton.IsChecked = false;
+            this.miniWindow.setPausebtnChecked(false);
+            this.miniWindow.setRecbtnChecked(true);
+
 
             string selectedName = this.SelectMicro.SelectedItem as string;
             var dev = new MMDeviceEnumerator()
@@ -167,7 +184,8 @@ namespace AudioRecorder
                 MessageBox.Show("Устройство не найдено");
                 return;
             }
-
+            var sliderVal = (float)SampleRateSlider.Value;
+            _gain = 1 + sliderVal * 0.25f;                  
 
             var startTime = DateTime.Now;
             string dateFolder = startTime.ToString("dd-MM-yyyy");
@@ -182,15 +200,15 @@ namespace AudioRecorder
 
             capture = new WasapiCapture(dev);
             capture.WaveFormat = new WaveFormat(22050, 1);
-            capture.DataAvailable += (s, e) =>
-            {
-                waveWriter.Write(e.Buffer, 0, e.BytesRecorded);
-            };
+            capture.DataAvailable -= OnDataAvailable;
+            capture.DataAvailable += OnDataAvailable;
+            capture.RecordingStopped -= Capture_RecordingStopped;
             capture.RecordingStopped += Capture_RecordingStopped;
 
             waveWriter = new WaveFileWriter(fullPath, capture.WaveFormat);
 
             RecTimer.Visibility = Visibility.Visible;
+            this.miniWindow.ToggleTimer(Visibility.Visible);
             uiTimer.Start();
             this.totalSeconds = 0;
 
@@ -199,16 +217,19 @@ namespace AudioRecorder
             this.isPaused = false;
         }
 
-        private void PauseRecording()
+        public void PauseRecording()
         {
             if (isRecording == false) { this.RecPauseButton.IsChecked = false; return; }
             isPaused = true;
             capture.StopRecording();
             uiTimer?.Stop();
             this.RecPauseButton.IsEnabled = false;
+            this.RecPauseButton.IsChecked = true;
+            this.miniWindow.setPausebtnChecked(true);
+            this.miniWindow.setPausebtnEnabled(false);
         }
 
-        private void ResumeRecording()
+        public void ResumeRecording()
         {
             if (isPaused == false) return;
             isPaused = false;
@@ -216,15 +237,21 @@ namespace AudioRecorder
             uiTimer.Start();
             this.RecPauseButton.IsChecked = false;
             this.RecPauseButton.IsEnabled = true;
+            this.miniWindow.setPausebtnChecked(false);
+            this.miniWindow.setPausebtnEnabled(true);
         }
 
-        private void StopRecording()
+        public void StopRecording()
         {
             capture?.StopRecording();
             this.RecPauseButton.IsEnabled = true;
             this.RecStartButton.IsEnabled = true;
             this.RecStartButton.IsChecked = false;
             this.RecPauseButton.IsChecked = false;
+            this.miniWindow.setRecbtnChecked(false);
+            this.miniWindow.setPausebtnChecked(false);
+            this.miniWindow.setRecbtnEnabled(true);
+            this.miniWindow.setPausebtnEnabled(true);
             this.SetUiBlocked(false);
         }
 
@@ -244,6 +271,7 @@ namespace AudioRecorder
             uiTimer.Stop();
             splitTimer.Stop();
             RecTimer.Visibility = Visibility.Hidden;
+            this.miniWindow.ToggleTimer(Visibility.Hidden);
             totalSeconds = 0;
             isRecording = false;
 
@@ -274,6 +302,7 @@ namespace AudioRecorder
             splitTimer = new DispatcherTimer { Interval = interval };
             splitTimer.Tick += SplitTimer_Tick;
             splitTimer.Start();
+            this.TitleText.Text = $"Заплановано розбиття на: {next}";
         }
         private void SplitTimer_Tick(object sender, EventArgs e)
         {
@@ -315,13 +344,18 @@ namespace AudioRecorder
         private void DurationButton_Checked(object sender, RoutedEventArgs e)
         {
             var pressed = sender as ToggleButton;
+            pressed.IsChecked = true;
+            pressed.IsEnabled = false;
             if (pressed == null) return;
             var all = new[] { this.Duration10min, this.Duration30min, this.Duration1h, this.Duration2h };
             foreach (var btn in all)
             {
-                if (!ReferenceEquals(btn, pressed))
+                if (!ReferenceEquals(btn, pressed)) { 
                     btn.IsChecked = false;
+                    btn.IsEnabled = true;
+                }
             }
+            SaveSettings();
         }
         private void ChooseFolder(object sender, RoutedEventArgs e)
         {
@@ -337,7 +371,6 @@ namespace AudioRecorder
                 recordsDir = dlg.FileName;
                 SaveSettings();
                 this.FolderPathText.Text = $"{this.recordsDir}";
-                //SaveSettings();
             }
         }
         private void CleanOldRecords()
@@ -396,6 +429,7 @@ namespace AudioRecorder
         private void AudioRecorder_Closed(object sender, EventArgs e)
         {
             this.StopRecording();
+            SaveSettings();
         }
 
         private void SoundTimer_Tick(object sender, EventArgs e)
@@ -461,20 +495,56 @@ namespace AudioRecorder
                                  .IndexOf(_settings.SelectedMicrophone);
                 if (idx >= 0) SelectMicro.SelectedIndex = idx;
             }
+            // 4) Выбранная длительность
+            if (!string.IsNullOrEmpty(_settings.SelectedDuration))
+            {
+                if (_settings.SelectedDuration == "10") Duration10min.IsChecked = true;
+                if (_settings.SelectedDuration == "30") Duration30min.IsChecked = true;
+                if (_settings.SelectedDuration == "60") Duration1h.IsChecked = true;
+                if (_settings.SelectedDuration == "120") Duration2h.IsChecked = true;
+            }
+            else
+            {
+                Duration10min.IsChecked = true;
+            }
         }
 
-        private void SaveSettings()
+        public void SaveSettings()
         {
             _settings.SliderThresholdValue = SampleRateSlider.Value;
             _settings.SliderDaysValue = SaveDaysLimit.Value;
             _settings.RecordsFolder = recordsDir;
             _settings.SelectedMicrophone = SelectMicro.SelectedItem as string;
+            _settings.SelectedDuration =
+                Duration10min.IsChecked == true ? "10" :
+                Duration30min.IsChecked == true ? "30" :
+                Duration1h.IsChecked == true ? "60" : "120";
 
             var json = System.Text.Json.JsonSerializer
                        .Serialize(_settings, new System.Text.Json.JsonSerializerOptions { WriteIndented = true });
             File.WriteAllText(SettingsFileName, json);
         }
+        private void OnDataAvailable(object sender, WaveInEventArgs e)
+        {
+            var writer = waveWriter;
+            if (writer == null) return;
 
+            int bytes = e.BytesRecorded;
+            byte[] buffer = new byte[bytes];
+
+            for (int i = 0; i < bytes; i += 2)
+            {
+                short sample = BitConverter.ToInt16(e.Buffer, i);
+                int amplified = (int)(sample * _gain);
+                amplified = Math.Clamp(amplified, short.MinValue, short.MaxValue);
+                var bs = BitConverter.GetBytes((short)amplified);
+                buffer[i] = bs[0];
+                buffer[i + 1] = bs[1];
+            }
+
+            writer.Write(buffer, 0, bytes);
+            writer.Flush();
+        }
     }
 }
 
